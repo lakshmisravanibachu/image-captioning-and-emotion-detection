@@ -1,60 +1,37 @@
 import streamlit as st
 from PIL import Image
-from transformers import BlipProcessor, BlipForConditionalGeneration
-import random
+import numpy as np
 
-# Function to load the model and processor with error handling
-def load_model():
-    try:
-        processor = BlipProcessor.from_pretrained("Salesforce/blip-image-captioning-base")
-        model = BlipForConditionalGeneration.from_pretrained("Salesforce/blip-image-captioning-base")
-        return processor, model
-    except Exception as e:
-        st.error(f"Error loading model: {e}")
-        return None, None
+# Dummy placeholder functions – replace with your actual implementations
+def generate_caption_and_emotion(image, style='old'):
+    if style == 'old':
+        return "A classical artwork showing a serene village scene.", "Calm"
+    else:
+        return "A peaceful countryside landscape under the sunset.", "Peaceful"
 
-# Load the model and processor
-processor, model = load_model()
+# Streamlit App
+st.set_page_config(page_title="Image Captioning & Emotion Detection", layout="centered")
 
-# Function to generate captions and emotions
-def generate_captions_with_emotions(image):
-    if processor is None or model is None:
-        return ("Model not loaded", "N/A"), ("Model not loaded", "N/A")
-    
-    # Process the image
-    inputs = processor(image, return_tensors="pt")
-    output = model.generate(**inputs)
-    caption = processor.decode(output[0], skip_special_tokens=True)
-    
-    # Define a list of emotions
-    emotions = ["joy", "sadness", "anger", "surprise", "fear", "disgust"]
-    
-    # Generate an older caption with emotion
-    older_caption = f"An older style description: {caption}"
-    older_emotion = random.choice(emotions)
-    
-    # Generate a modern caption with emotion
-    modern_caption = f"A modern take: {caption}"
-    modern_emotion = random.choice(emotions)
-    
-    return (older_caption, older_emotion), (modern_caption, modern_emotion)
+st.title("🖼️ Image Captioning with Emotion Detection")
+st.write("Upload an image to generate **older** and **modern** captions with associated **emotions**.")
 
-# Streamlit application
-st.title("Image Captioning App")
-st.write("Upload an image to generate both older and modern captions with emotions using the BLIP model.")
-
-# Upload image
 uploaded_file = st.file_uploader("Choose an image...", type=["jpg", "jpeg", "png"])
 
 if uploaded_file is not None:
-    # Open and display the image
     image = Image.open(uploaded_file)
     st.image(image, caption='Uploaded Image', use_column_width=True)
-    
-    # Generate captions
-    if st.button("Generate Captions"):
-        (older_caption, older_emotion), (modern_caption, modern_emotion) = generate_captions_with_emotions(image)
-        st.write("**Older Caption:**", older_caption)
-        st.write("**Emotion:**", older_emotion)
-        st.write("**Modern Caption:**", modern_caption)
-        st.write("**Emotion:**", modern_emotion)
+
+    st.write("🔍 Generating captions and emotions...")
+
+    # Run your models (replace with actual model inference)
+    old_caption, old_emotion = generate_caption_and_emotion(image, style='old')
+    modern_caption, modern_emotion = generate_caption_and_emotion(image, style='modern')
+
+    # Display results
+    st.subheader("🕰️ Older Style")
+    st.markdown(f"**Caption:** {old_caption}")
+    st.markdown(f"**Emotion:** {old_emotion}")
+
+    st.subheader("🧠 Modern Style")
+    st.markdown(f"**Caption:** {modern_caption}")
+    st.markdown(f"**Emotion:** {modern_emotion}")

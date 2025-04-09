@@ -1,61 +1,94 @@
 import streamlit as st
+from transformers import BlipProcessor, BlipForConditionalGeneration, T5Tokenizer, T5ForConditionalGeneration
 from PIL import Image
-import numpy as np
+import torch
 
-# Function to generate captions and emotions
-def generate_captions_and_emotions(image):
-    # Preprocess the image
-    img_tensor = read_image(image)
-    img_features = caption_model.cnn_model(img_tensor)
-    encoded_img = caption_model.encoder(img_features, training=False)
+# Load models only once
+@st.cache_resource
+def load_models():
+    blip_processor = BlipProcessor.from_pretrained("Salesforce/blip-image-captioning-base")
+    blip_model = BlipForConditionalGeneration.from_pretrained("Salesforce/blip-image-captioning-base")
+    t5_tokenizer = T5Tokenizer.from_pretrained("google/flan-t5-large")
+    t5_model = T5ForConditionalGeneration.from_pretrained("google/flan-t5-large")
+    return blip_processor, blip_model, t5_tokenizer, t5_model
 
-    # Generate Caption
-    decoded_caption = "<start> "
-    for i in range(max_decoded_sentence_length):
-        tokenized_caption = vectorization([decoded_caption])[:, :-1]
-        mask = tf.math.not_equal(tokenized_caption, 0)
-        predictions = caption_model.decoder(
-            tokenized_caption, encoded_img, training=False, mask=mask
-        )
-        sampled_token_index = np.argmax(predictions[0, i, :])
-        sampled_token = index_lookup[sampled_token_index]
-        if sampled_token == " <end>":
-            break
-        decoded_caption += " " + sampled_token
+blip_processor, blip_model, t5_tokenizer, t5_model = load_models()
 
-    final_caption = (
-        decoded_caption.replace("<start> ", "").replace(" <end>", "").strip()
-    )
+# Assign tone based on content
+def detect_tone(caption, style="older"):
+    caption = caption.lower()
+    if style == "older":
+        if any(word in caption for word in ["storm", "ship", "dark", "night", "soldier"]):
+            return "danger"
+        elif any(word in caption for word in ["old", "village", "memory", "classic", "black and white"]):
+            return "nostalgia"
+        elif any(word in caption for word in ["mystery", "fog", "shadow", "hidden"]):
+            return "mystery"
+        else:
+            return "sadness"
+    else:
+        if any(word in caption for word in ["party", "dance", "smile", "happy"]):
+            return "joy"
+        elif any(word in caption for word in ["run", "ride", "jump", "race"]):
+            return "excitement"
+        elif any(word in caption for word in ["trip", "mountain", "beach", "explore"]):
+            return "adventure"
+        else:
+            return "humor"
 
-    # Generate Emotion (using the emotion detection model)
-    img_array = np.array(image.resize((48, 48))).reshape(1, 48, 48, 1) / 255.0
-    emotion_prediction = model.predict(img_array)
-    emotion_index = np.argmax(emotion_prediction)
-    detected_emotion = emotion_labels[emotion_index]
+# Caption rewriter
+def rewrite_caption(caption, style, emotion):
+    prompt_map = {
+        "older": {
+            "nostalgia": "Rewrite this in an old-fashioned, sentimental style",
+            "sadness": "Rewrite this as a melancholic and deep story",
+            "mystery": "Rewrite this in a suspenseful and enigmatic tone",
+            "danger": "Rewrite this in a thrilling and perilous manner",
+        },
+        "modern": {
+            "joy": "Make this fun, cheerful, and lighthearted",
+            "excitement": "Make this energetic and thrilling",
+            "adventure": "Make this sound like an exciting and bold journey",
+            "humor": "Make this funny and engaging for social media",
+        },
+    }
+    prompt = f"{prompt_map[style][emotion]}: {caption}"
+    input_ids = t5_tokenizer(prompt, return_tensors="pt").input_ids
+    output = t5_model.generate(input_ids, max_length=50)
+    return t5_tokenizer.decode(output[0], skip_special_tokens=True)
 
-    return final_caption, detected_emotion
+# Get base caption
+def get_base_caption(image):
+    inputs = blip_processor(image, return_tensors="pt")
+    output = blip_model.generate(**inputs)
+    return blip_processor.decode(output[0], skip_special_tokens=True)
 
-# Streamlit UI
-st.title("Image Captioning and Emotion Detection")
-st.write("Upload an image to get captions and detected emotions.")
+# Streamlit app
+st.set_page_config(page_title="Dual Emotion Caption Generator")
+st.title("🖼️ Image-Based Emotion Caption Generator")
 
-# Image upload
-uploaded_file = st.file_uploader("Choose an image...", type=["jpg", "png", "jpeg"])
+uploaded_file = st.file_uploader("Upload an image", type=["jpg", "jpeg", "png"])
 
-if uploaded_file is not None:
-    # Open the image
-    image = Image.open(uploaded_file)
-    st.image(image, caption='Uploaded Image', use_column_width=True)
+if uploaded_file:
+    image = Image.open(uploaded_file).convert("RGB")
+    st.image(image, caption="Uploaded Image", use_column_width=True)
 
-    # Generate captions and emotions
-    caption, emotion = generate_captions_and_emotions(image)
+    with st.spinner("Generating captions..."):
+        base_caption = get_base_caption(image)
 
-    # Display results
-    st.write("### Generated Caption:")
-    st.write(caption)
-    st.write("### Detected Emotion:")
-    st.write(emotion)
+        # Determine emotions based on caption
+        older_emotion = detect_tone(base_caption, style="older")
+        modern_emotion = detect_tone(base_caption, style="modern")
 
-# Run the Streamlit app
-if __name__ == "__main__":
-    st.run()
+        # Rewrite captions
+        older_caption = rewrite_caption(base_caption, "older", older_emotion)
+        modern_caption = rewrite_caption(base_caption, "modern", modern_emotion)
+
+    st.markdown("### 🧠 Base Caption")
+    st.info(base_caption)
+
+    st.markdown(f"### 🕰️ Older Style Caption ({older_emotion.capitalize()})")
+    st.success(older_caption)
+
+    st.markdown(f"### ⚡ Modern Style Caption ({modern_emotion.capitalize()})")
+    st.warning(modern_caption)

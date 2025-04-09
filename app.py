@@ -3,7 +3,7 @@ from transformers import BlipProcessor, BlipForConditionalGeneration
 from PIL import Image
 import torch
 
-# Load the BLIP model and processor from Hugging Face
+# Load model
 @st.cache_resource
 def load_models():
     processor = BlipProcessor.from_pretrained("Salesforce/blip-image-captioning-base")
@@ -13,66 +13,73 @@ def load_models():
 
 processor, model = load_models()
 
+# Simple rule-based emotion detection (improvement placeholder)
+def detect_emotion(caption):
+    caption = caption.lower()
+    if any(word in caption for word in ["sunset", "nostalgic", "golden", "memories", "glow"]):
+        return "Nostalgic"
+    elif any(word in caption for word in ["happy", "fun", "smile", "friends", "joy"]):
+        return "Happy"
+    elif any(word in caption for word in ["storm", "dark", "lonely", "cold", "fear"]):
+        return "Sad"
+    elif any(word in caption for word in ["peace", "calm", "quiet", "relax", "serene"]):
+        return "Peaceful"
+    elif any(word in caption for word in ["wow", "amazing", "incredible", "shocking"]):
+        return "Surprised"
+    else:
+        return "Neutral"
+
+# Caption generator
 def generate_caption(image, style="old"):
     raw_image = image.convert("RGB")
-    
-    # Extended prompts including example styles
+
+    # Style prompt
     if style == "old":
-        prompt = (
-            "Compose a caption for the image that is in a classical poetic style. "
-            "For example: “A golden orb sinks beyond the silent hills, casting hues of amber upon the tranquil land.” "
-            "Now provide a similar style description for the image:"
-        )
+        prompt = "Describe this image in an old-fashioned, poetic tone."
     else:
-        prompt = (
-            "Compose a caption for the image that is in a modern, casual style. "
-            "For example: “Beautiful sunset with warm colors lighting up the sky!” "
-            "Now provide a similar style description for the image:"
-        )
-    
-    # Combine the image with the text prompt
-    inputs = processor(raw_image, text=prompt, return_tensors="pt")
-    
-    # Generate caption using sampling for diversity
+        prompt = "Describe this image in a modern and casual tone."
+
+    # Generate caption
+    inputs = processor(images=raw_image, text=prompt, return_tensors="pt")
     with torch.no_grad():
         output = model.generate(
             **inputs,
-            max_length=60,
+            max_length=50,
             num_beams=5,
             do_sample=True,
-            temperature=0.8,
+            temperature=0.9,
             top_p=0.95,
         )
-    
-    caption = processor.decode(output[0], skip_special_tokens=True).strip()
-    
-    # Dummy emotion labels for now
-    emotion = "Nostalgic" if style == "old" else "Peaceful"
-    
+
+    caption = processor.decode(output[0], skip_special_tokens=True)
+    emotion = detect_emotion(caption)
+
     return caption, emotion
 
 # Streamlit UI
-st.set_page_config(page_title="🖼️ Image Captioning with Emotion", layout="centered")
-st.title("🖼️ Image Captioning with Emotion Detection")
-st.write("Upload an image below and click **Generate Captions & Emotions** to see two style-specific captions.")
+st.set_page_config(page_title="🖼️ Image Captioning", layout="centered")
+st.title("🖼️ Image Captioning App")
+st.write("Upload an image to generate both **older** and **modern** style captions with emotions.")
 
 uploaded_file = st.file_uploader("Choose an image...", type=["jpg", "jpeg", "png"])
 
 if uploaded_file:
     image = Image.open(uploaded_file)
     st.image(image, caption="Uploaded Image", use_column_width=True)
-    
+
     if st.button("✨ Generate Captions & Emotions"):
-        st.info("Generating captions, please wait...")
-        
-        # Generate old and modern style captions
+        st.subheader("Generating Captions...")
+
+        # Generate styled captions
         old_caption, old_emotion = generate_caption(image, style="old")
         modern_caption, modern_emotion = generate_caption(image, style="modern")
-        
+
+        # Show results
         st.markdown("### 🕰️ Older Style")
-        st.markdown(f"**Caption:** {old_caption}")
-        st.markdown(f"**Emotion:** {old_emotion}")
-        
+        st.markdown(f"**Caption:** _{old_caption}_")
+        st.markdown(f"**Emotion:** `{old_emotion}`")
+
         st.markdown("### 🧠 Modern Style")
-        st.markdown(f"**Caption:** {modern_caption}")
-        st.markdown(f"**Emotion:** {modern_emotion}")
+        st.markdown(f"**Caption:** _{modern_caption}_")
+        st.markdown(f"**Emotion:** `{modern_emotion}`")
+

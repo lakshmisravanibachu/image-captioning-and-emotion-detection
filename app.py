@@ -1,85 +1,61 @@
 import streamlit as st
-from transformers import BlipProcessor, BlipForConditionalGeneration
 from PIL import Image
-import torch
+import numpy as np
 
-# Load model
-@st.cache_resource
-def load_models():
-    processor = BlipProcessor.from_pretrained("Salesforce/blip-image-captioning-base")
-    model = BlipForConditionalGeneration.from_pretrained("Salesforce/blip-image-captioning-base")
-    model.eval()
-    return processor, model
+# Function to generate captions and emotions
+def generate_captions_and_emotions(image):
+    # Preprocess the image
+    img_tensor = read_image(image)
+    img_features = caption_model.cnn_model(img_tensor)
+    encoded_img = caption_model.encoder(img_features, training=False)
 
-processor, model = load_models()
-
-# Simple rule-based emotion detection (improvement placeholder)
-def detect_emotion(caption):
-    caption = caption.lower()
-    if any(word in caption for word in ["sunset", "nostalgic", "golden", "memories", "glow"]):
-        return "Nostalgic"
-    elif any(word in caption for word in ["happy", "fun", "smile", "friends", "joy"]):
-        return "Happy"
-    elif any(word in caption for word in ["storm", "dark", "lonely", "cold", "fear"]):
-        return "Sad"
-    elif any(word in caption for word in ["peace", "calm", "quiet", "relax", "serene"]):
-        return "Peaceful"
-    elif any(word in caption for word in ["wow", "amazing", "incredible", "shocking"]):
-        return "Surprised"
-    else:
-        return "Neutral"
-
-# Caption generator
-def generate_caption(image, style="old"):
-    raw_image = image.convert("RGB")
-
-    # Style prompt
-    if style == "old":
-        prompt = "Describe this image in an old-fashioned, poetic tone."
-    else:
-        prompt = "Describe this image in a modern and casual tone."
-
-    # Generate caption
-    inputs = processor(images=raw_image, text=prompt, return_tensors="pt")
-    with torch.no_grad():
-        output = model.generate(
-            **inputs,
-            max_length=50,
-            num_beams=5,
-            do_sample=True,
-            temperature=0.9,
-            top_p=0.95,
+    # Generate Caption
+    decoded_caption = "<start> "
+    for i in range(max_decoded_sentence_length):
+        tokenized_caption = vectorization([decoded_caption])[:, :-1]
+        mask = tf.math.not_equal(tokenized_caption, 0)
+        predictions = caption_model.decoder(
+            tokenized_caption, encoded_img, training=False, mask=mask
         )
+        sampled_token_index = np.argmax(predictions[0, i, :])
+        sampled_token = index_lookup[sampled_token_index]
+        if sampled_token == " <end>":
+            break
+        decoded_caption += " " + sampled_token
 
-    caption = processor.decode(output[0], skip_special_tokens=True)
-    emotion = detect_emotion(caption)
+    final_caption = (
+        decoded_caption.replace("<start> ", "").replace(" <end>", "").strip()
+    )
 
-    return caption, emotion
+    # Generate Emotion (using the emotion detection model)
+    img_array = np.array(image.resize((48, 48))).reshape(1, 48, 48, 1) / 255.0
+    emotion_prediction = model.predict(img_array)
+    emotion_index = np.argmax(emotion_prediction)
+    detected_emotion = emotion_labels[emotion_index]
+
+    return final_caption, detected_emotion
 
 # Streamlit UI
-st.set_page_config(page_title="🖼️ Image Captioning", layout="centered")
-st.title("🖼️ Image Captioning App")
-st.write("Upload an image to generate both **older** and **modern** style captions with emotions.")
+st.title("Image Captioning and Emotion Detection")
+st.write("Upload an image to get captions and detected emotions.")
 
-uploaded_file = st.file_uploader("Choose an image...", type=["jpg", "jpeg", "png"])
+# Image upload
+uploaded_file = st.file_uploader("Choose an image...", type=["jpg", "png", "jpeg"])
 
-if uploaded_file:
+if uploaded_file is not None:
+    # Open the image
     image = Image.open(uploaded_file)
-    st.image(image, caption="Uploaded Image", use_column_width=True)
+    st.image(image, caption='Uploaded Image', use_column_width=True)
 
-    if st.button("✨ Generate Captions & Emotions"):
-        st.subheader("Generating Captions...")
+    # Generate captions and emotions
+    caption, emotion = generate_captions_and_emotions(image)
 
-        # Generate styled captions
-        old_caption, old_emotion = generate_caption(image, style="old")
-        modern_caption, modern_emotion = generate_caption(image, style="modern")
+    # Display results
+    st.write("### Generated Caption:")
+    st.write(caption)
+    st.write("### Detected Emotion:")
+    st.write(emotion)
 
-        # Show results
-        st.markdown("### 🕰️ Older Style")
-        st.markdown(f"**Caption:** _{old_caption}_")
-        st.markdown(f"**Emotion:** `{old_emotion}`")
-
-        st.markdown("### 🧠 Modern Style")
-        st.markdown(f"**Caption:** _{modern_caption}_")
-        st.markdown(f"**Emotion:** `{modern_emotion}`")
-
+# Run the Streamlit app
+if __name__ == "__main__":
+    st.run()

@@ -3,12 +3,24 @@ from PIL import Image
 from transformers import BlipProcessor, BlipForConditionalGeneration
 import random
 
-# Load the BLIP model and processor
-processor = BlipProcessor.from_pretrained("Salesforce/blip-image-captioning-base")
-model = BlipForConditionalGeneration.from_pretrained("Salesforce/blip-image-captioning-base")
+# Function to load the model and processor with error handling
+def load_model():
+    try:
+        processor = BlipProcessor.from_pretrained("Salesforce/blip-image-captioning-base")
+        model = BlipForConditionalGeneration.from_pretrained("Salesforce/blip-image-captioning-base")
+        return processor, model
+    except Exception as e:
+        st.error(f"Error loading model: {e}")
+        return None, None
+
+# Load the model and processor
+processor, model = load_model()
 
 # Function to generate captions and emotions
 def generate_captions_with_emotions(image):
+    if processor is None or model is None:
+        return ("Model not loaded", "N/A"), ("Model not loaded", "N/A")
+    
     # Process the image
     inputs = processor(image, return_tensors="pt")
     output = model.generate(**inputs)

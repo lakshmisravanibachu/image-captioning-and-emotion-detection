@@ -3,7 +3,7 @@ from transformers import BlipProcessor, BlipForConditionalGeneration
 from PIL import Image
 import torch
 
-# Load model and processor from Hugging Face
+# Load the BLIP model and processor from Hugging Face
 @st.cache_resource
 def load_models():
     processor = BlipProcessor.from_pretrained("Salesforce/blip-image-captioning-base")
@@ -16,57 +16,63 @@ processor, model = load_models()
 def generate_caption(image, style="old"):
     raw_image = image.convert("RGB")
     
-    # Use different prompts to influence style
+    # Extended prompts including example styles
     if style == "old":
-        prompt = "Provide a vintage, poetic description for this image:"
+        prompt = (
+            "Compose a caption for the image that is in a classical poetic style. "
+            "For example: “A golden orb sinks beyond the silent hills, casting hues of amber upon the tranquil land.” "
+            "Now provide a similar style description for the image:"
+        )
     else:
-        prompt = "Give a modern and casual description for this image:"
+        prompt = (
+            "Compose a caption for the image that is in a modern, casual style. "
+            "For example: “Beautiful sunset with warm colors lighting up the sky!” "
+            "Now provide a similar style description for the image:"
+        )
     
-    # Process inputs with both image and text prompt
+    # Combine the image with the text prompt
     inputs = processor(raw_image, text=prompt, return_tensors="pt")
     
-    # Generate with sampling to reduce copy behavior
+    # Generate caption using sampling for diversity
     with torch.no_grad():
         output = model.generate(
             **inputs,
-            max_length=50,
+            max_length=60,
             num_beams=5,
             do_sample=True,
-            temperature=0.7,
-            top_p=0.9
+            temperature=0.8,
+            top_p=0.95,
         )
     
-    caption = processor.decode(output[0], skip_special_tokens=True)
+    caption = processor.decode(output[0], skip_special_tokens=True).strip()
     
-    # Dummy emotion placeholders (replace with your own emotion detection if available)
+    # Dummy emotion labels for now
     emotion = "Nostalgic" if style == "old" else "Peaceful"
     
     return caption, emotion
 
-# Streamlit user interface
+# Streamlit UI
 st.set_page_config(page_title="🖼️ Image Captioning with Emotion", layout="centered")
 st.title("🖼️ Image Captioning with Emotion Detection")
-st.write(
-    "Upload an image and click **Generate Captions & Emotions** to get two different caption styles with emotions."
-)
+st.write("Upload an image below and click **Generate Captions & Emotions** to see two style-specific captions.")
 
 uploaded_file = st.file_uploader("Choose an image...", type=["jpg", "jpeg", "png"])
 
 if uploaded_file:
     image = Image.open(uploaded_file)
     st.image(image, caption="Uploaded Image", use_column_width=True)
-
-    # Generate captions only when the button is clicked
+    
     if st.button("✨ Generate Captions & Emotions"):
-        st.info("Generating Captions...")
+        st.info("Generating captions, please wait...")
         
+        # Generate old and modern style captions
         old_caption, old_emotion = generate_caption(image, style="old")
         modern_caption, modern_emotion = generate_caption(image, style="modern")
-
-        st.markdown("### Older Style")
+        
+        st.markdown("### 🕰️ Older Style")
         st.markdown(f"**Caption:** {old_caption}")
         st.markdown(f"**Emotion:** {old_emotion}")
-
-        st.markdown("### Modern Style")
+        
+        st.markdown("### 🧠 Modern Style")
         st.markdown(f"**Caption:** {modern_caption}")
         st.markdown(f"**Emotion:** {modern_emotion}")
